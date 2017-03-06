@@ -4,6 +4,7 @@ std::time_t Timer::_time_start;
 CostLess::CostLess(char * topo[MAX_EDGE_NUM], int line_num)
 {
     init(topo,line_num);
+    _lambda = 1.0;
 }
 
 CostLess::~CostLess()
@@ -25,7 +26,7 @@ void CostLess::init(char* topo[MAX_EDGE_NUM],int line_num)
     }
     //server price
     std::stringstream price(topo[2]);
-    price >> sp_;
+    price >> _sp;
     //link info
     for( uint32_t link_i = 0; link_i < edge_n ; ++link_i )
     {
@@ -52,9 +53,9 @@ void CostLess::init(char* topo[MAX_EDGE_NUM],int line_num)
 uint32_t CostLess::less()
 {
     computeD();
-    projectD();
+    computeStep();
     update();
-    return uint32_t(computeObj());
+    return getObjFromXI();
 }
 
 bool CostLess::isEnd()
@@ -62,17 +63,47 @@ bool CostLess::isEnd()
      return true;
 }
 
-float CostLess::computeObj()
+float CostLess::getObjFromX(void)
+{
+    ;
+}
+
+uint32_t CostLess::getObjFromXI(void)
+{
+    ;
+}
+
+uint32_t CostLess::getObjFromXtoI(void)
 {
     ;
 }
 
 void CostLess::computeD()
 {
-    ;
+    //server traffic derivation
+    for(NodeX::Iter niter=_x.begin();niter!=_x.end();++niter)
+    {
+        NodeX& node = *niter;
+        if( node._x <= 1.0 )
+        {
+            node._dx = _sp;
+        }else{
+            node._dx = _sp*_lambda;
+        }
+
+    }
+    //net traffic derivation
+    for(NodeX::Iter niter=_x.begin();niter!=_x.end();++niter)
+    for(EdgeX::Iter eiter=niter->_out_edge.begin();eiter!=niter->_out_edge.end();++eiter)
+    {
+        EdgeX& edge = *eiter;
+        edge._dx  = edge._a;
+        edge._dx += niter->_dx;
+        edge._dx -= _x[edge._j]._dx;
+    }
 }
 
-void CostLess::projectD()
+void CostLess::computeStep()
 {
     ;
 }

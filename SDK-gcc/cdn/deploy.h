@@ -17,6 +17,8 @@ public:
 protected:
     class EdgeX{
     public:
+        typedef std::vector<EdgeX>::iterator Iter;
+        typedef std::vector<EdgeX>::const_iterator CIter;
         EdgeX(uint32_t i,uint32_t j,float x,float dx,float xm,float cost):
             _i(i),_j(j),_x(x),_dx(dx),_x_max(xm),_a(cost)
         {
@@ -32,6 +34,8 @@ protected:
     };
     class NodeX{
     public:
+        typedef std::vector<NodeX>::iterator Iter;
+        typedef std::vector<NodeX>::const_iterator CIter;
         NodeX(
                 uint32_t n,
                 float x,
@@ -52,17 +56,26 @@ protected:
         std::vector<EdgeX> _out_edge; //outgoing edges
     };
     void init(char* topo[MAX_EDGE_NUM],int line_num);
-    float computeObj();
+    float getObjFromX(void);
+    uint32_t getObjFromXI(void);
+    uint32_t getObjFromXtoI(void);
     void computeD();
-    void projectD();
+    void computeStep();
     void update();
+protected:
+    //lambda
+    float _lambda;
+    //last obj float
+    float _objf_last;
+    //last obj integer
+    uint32_t _obji_last;
 private:
-//result text
-std::stringstream _res_txt;
-//server cost
-float sp_;
-//node vector
-std::vector<NodeX> _x;
+    //result text
+    std::stringstream _res_txt;
+    //server cost
+    float _sp;
+    //node vector
+    std::vector<NodeX> _x;
 };
 
 class Timer
