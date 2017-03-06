@@ -95,10 +95,12 @@ const char* CostLess::getRes()
         current_path.reserve(_x.size());
         std::vector<uint32_t> min_traffic; //minimum traffic when reach current node by current path
         min_traffic.reserve(_x.size());
+        std::vector<bool> visited(_x.size(),false);
         node_to_visit.push(niter->_n);
         while(!node_to_visit.empty())
         {
             uint32_t node_visit = node_to_visit.top();
+            visited[node_visit] = true;
             node_to_visit.pop();
             const NodeX &node = _x[node_visit];
             if(current_path.empty())
@@ -112,7 +114,7 @@ const char* CostLess::getRes()
                     const EdgeX & edge = *eiter;
                     if( edge._j == node._n  )
                     {
-                        if(edge._ix<min_traffic.back())
+                        if( edge._ix < min_traffic.back() )
                         {
                             min_traffic.push_back(edge._ix);
                         }else{
@@ -123,7 +125,7 @@ const char* CostLess::getRes()
                 current_path.push_back(node._n);
             }
             //arrived at a consumer
-            if(-1!=node._ci)
+            if( -1 != node._ci )
             {
                 for(std::vector<uint32_t>::const_iterator piter=current_path.cbegin();piter!=current_path.cend();++piter)
                 {
@@ -134,10 +136,16 @@ const char* CostLess::getRes()
                 current_path.pop_back();
                 min_traffic.pop_back();
             }else{
-
+                for(std::vector<EdgeX>::const_iterator eiter=node._out_edge.cbegin();eiter!=node._out_edge.cend();++eiter)
+                {
+                    const EdgeX& edge = *eiter;
+                    if( 0 != edge._ix && !visited[edge._j] )
+                    {
+                        node_to_visit.push(edge._j);
+                    }
+                }
             }
         }
-
     }
     _res_txt.flush();
     _res_txt<<cnt<<"\n\n";
