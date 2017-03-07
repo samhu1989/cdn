@@ -82,16 +82,42 @@ bool CostLess::isConverge()
     }else return false;
 }
 
-
 bool CostLess::isBetterIX()
 {
-    bool is = true;
     uint32_t obj = 0;
     //server traffic gradient
     for(NodeX::Iter niter=_x.begin();niter!=_x.end();++niter)
     {
         NodeX& node = *niter;
-        int32_t nix = std::round(node._x);
+        int32_t nix = std::round(node._cx);
+        for(EdgeX::Iter eiter=niter->_out_edge.begin();eiter!=niter->_out_edge.end();++eiter)
+        {
+
+            EdgeX& edge = *eiter;
+            assert( node._n == edge._i );
+            int32_t eix = std::round(edge._x);
+            if( eix < 0 )
+            {
+                return false;
+            }else if ( eix > edge._x_max )
+            {
+                return false;
+            }else
+            {
+                nix += eix;
+            }
+            NodeX & cnode = _x[edge._j];
+            for(EdgeX::Iter ceiter = cnode._out_edge.begin(); ceiter != cnode._out_edge.end() ; ++ceiter )
+            {
+                EdgeX& cedge = *ceiter;
+                assert( cnode._n == cedge._i );
+                if( cedge._j == node._n )
+                {
+                    nix -= std::round(cedge._x);
+                    break;
+                }
+            }
+        }
         if( nix < 0  )
         {
             return false;
@@ -99,26 +125,12 @@ bool CostLess::isBetterIX()
         {
             obj += _sp;
         }
-        for(EdgeX::Iter eiter=niter->_out_edge.begin();eiter!=niter->_out_edge.end();++eiter)
-        {
-            EdgeX& edge = *eiter;
-            int32_t eix = std::round(node._x);
-            if( eix < 0.0 )
-            {
-                return false;
-            }else if( eix > edge._x_max )
-            {
-                return false;
-            }else{
-                obj += eix*uint32_t(edge._a);
-            }
-        }
     }
     if( _obji_last > 0 && obj > _obji_last )
     {
         return false;
     }else _obji_last = obj;
-    return is;
+    return true;
 }
 
 bool CostLess::isEnd()
@@ -245,11 +257,24 @@ void CostLess::updateIX()
     for(NodeX::Iter niter=_x.begin();niter!=_x.end();++niter)
     {
         NodeX& node = *niter;
-        node._ix = std::round(node._x);
+        node._ix = std::round(node._cx);
         for(EdgeX::Iter eiter=niter->_out_edge.begin();eiter!=niter->_out_edge.end();++eiter)
         {
             EdgeX& edge = *eiter;
             edge._ix = std::round(edge._x);
+            assert( node._n == edge._i );
+            node._ix += edge._ix;
+            NodeX & cnode = _x[edge._j];
+            for(EdgeX::Iter ceiter = cnode._out_edge.begin(); ceiter != cnode._out_edge.end() ; ++ceiter )
+            {
+                EdgeX& cedge = *ceiter;
+                assert( cnode._n == cedge._i );
+                if( cedge._j == node._n )
+                {
+                    node._ix -= std::round(cedge._x);
+                    break;
+                }
+            }
         }
     }
 }
