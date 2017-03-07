@@ -57,18 +57,21 @@ protected:
     };
     void init(char* topo[MAX_EDGE_NUM],int line_num);
     float getObjFromX(void);
-    uint32_t getObjFromXI(void);
-    uint32_t getObjFromXtoI(void);
     void computeD();
-    void computeStep();
-    void update();
+    void updateX();
+    void updateIX();
 protected:
+    bool isConverge();
+    bool isBetterIX();
     //lambda
     float _lambda;
     //last obj float
     float _objf_last;
     //last obj integer
     uint32_t _obji_last;
+    float _inf;
+    float _step;
+
 private:
     //result text
     std::stringstream _res_txt;

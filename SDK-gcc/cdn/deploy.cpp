@@ -1,14 +1,21 @@
 #include "deploy.h"
 #include <stack>
+#include <cassert>
+#include <cmath>
 std::time_t Timer::_time_start;
 CostLess::CostLess(char * topo[MAX_EDGE_NUM], int line_num)
 {
     init(topo,line_num);
     _lambda = 1.0;
+    _inf = 1e4;
+    _objf_last = getObjFromX();
+    _obji_last = 0;
+    isBetterIX();
 }
 
 CostLess::~CostLess()
 {
+
 }
 
 void CostLess::init(char* topo[MAX_EDGE_NUM],int line_num)
@@ -53,64 +60,198 @@ void CostLess::init(char* topo[MAX_EDGE_NUM],int line_num)
 uint32_t CostLess::less()
 {
     computeD();
-    computeStep();
-    update();
-    return getObjFromXI();
+    updateX();
+    if( isConverge() ) //is converged respecting to the continue problem
+    {
+        _lambda *= 0.5;
+        _objf_last = getObjFromX();
+        return _obji_last;
+    }
+    if( isBetterIX() )
+    {
+        updateIX();
+    }
+    return _obji_last;
+}
+
+bool CostLess::isConverge()
+{
+    if( getObjFromX() > _objf_last )
+    {
+        return true;
+    }else return false;
+}
+
+
+bool CostLess::isBetterIX()
+{
+    bool is = true;
+    uint32_t obj = 0;
+    //server traffic gradient
+    for(NodeX::Iter niter=_x.begin();niter!=_x.end();++niter)
+    {
+        NodeX& node = *niter;
+        int32_t nix = std::round(node._x);
+        if( nix < 0  )
+        {
+            return false;
+        }else if( nix >= 1 )
+        {
+            obj += _sp;
+        }
+        for(EdgeX::Iter eiter=niter->_out_edge.begin();eiter!=niter->_out_edge.end();++eiter)
+        {
+            EdgeX& edge = *eiter;
+            int32_t eix = std::round(node._x);
+            if( eix < 0.0 )
+            {
+                return false;
+            }else if( eix > edge._x_max )
+            {
+                return false;
+            }else{
+                obj += eix*uint32_t(edge._a);
+            }
+        }
+    }
+    if( _obji_last > 0 && obj > _obji_last )
+    {
+        return false;
+    }else _obji_last = obj;
+    return is;
 }
 
 bool CostLess::isEnd()
 {
-     return true;
+     if( _lambda < ( 1.0 / ( 1.0 + _inf ) )  )return true;
 }
 
 float CostLess::getObjFromX(void)
 {
-    ;
-}
-
-uint32_t CostLess::getObjFromXI(void)
-{
-    ;
-}
-
-uint32_t CostLess::getObjFromXtoI(void)
-{
-    ;
+    float obj = 0.0;
+    //server traffic gradient
+    for(NodeX::Iter niter=_x.begin();niter!=_x.end();++niter)
+    {
+        NodeX& node = *niter;
+        if( node._x < 0.0 )
+        {
+            obj += node._x*(-_inf);
+        }else if( node._x <= 1.0 )
+        {
+            obj += node._x*_sp;
+        }else
+        {
+            obj += node._x*_sp*_lambda;
+        }
+        for(EdgeX::Iter eiter=niter->_out_edge.begin();eiter!=niter->_out_edge.end();++eiter)
+        {
+            EdgeX& edge = *eiter;
+            if( edge._x < 0.0 )
+            {
+                obj += node._x*(-_inf);
+            }else if( edge._x > edge._x_max )
+            {
+                obj += node._x*_inf;
+            }else{
+                obj += node._x*edge._a;
+            }
+        }
+    }
+    return obj;
 }
 
 void CostLess::computeD()
 {
-    //server traffic derivation
+    //server traffic gradient
     for(NodeX::Iter niter=_x.begin();niter!=_x.end();++niter)
     {
         NodeX& node = *niter;
-        if( node._x <= 1.0 )
+        if( node._x < 0.0 )
+        {
+            node._dx = -_inf;
+        }else if( node._x <= 1.0 )
         {
             node._dx = _sp;
-        }else{
+        }else
+        {
             node._dx = _sp*_lambda;
         }
-
     }
-    //net traffic derivation
+    //net traffic gradient
+    float max_abs_dx = 1.0;
     for(NodeX::Iter niter=_x.begin();niter!=_x.end();++niter)
     for(EdgeX::Iter eiter=niter->_out_edge.begin();eiter!=niter->_out_edge.end();++eiter)
     {
         EdgeX& edge = *eiter;
-        edge._dx  = edge._a;
-        edge._dx += niter->_dx;
-        edge._dx -= _x[edge._j]._dx;
+        if( edge._x < 0.0 )
+        {
+            edge._dx = -_inf;
+        }else if( edge._x > edge._x_max )
+        {
+            edge._dx = _inf;
+        }else{
+            edge._dx  = edge._a;
+            edge._dx += niter->_dx;
+            edge._dx -= _x[edge._j]._dx;
+        }
+        //for calculate step let the largest step be 1
+        if( std::abs(edge._dx) > max_abs_dx )
+        {
+            max_abs_dx = std::abs(edge._dx);
+        }
+    }
+    //set step so that the largest update be 1
+    _step = 1.0 / max_abs_dx;
+}
+
+void CostLess::updateX()
+{
+    //update edge traffic by gradient
+    for(NodeX::Iter niter=_x.begin();niter!=_x.end();++niter)
+    {
+        for(EdgeX::Iter eiter=niter->_out_edge.begin();eiter!=niter->_out_edge.end();++eiter)
+        {
+            EdgeX& edge = *eiter;
+            edge._x -= _step*edge._dx;
+        }
+    }
+    //update server traffic by net traffic
+    for(NodeX::Iter niter=_x.begin();niter!=_x.end();++niter)
+    {
+        NodeX& node = *niter;
+        node._x = node._cx;
+        for(EdgeX::Iter eiter=niter->_out_edge.begin();eiter!=niter->_out_edge.end();++eiter)
+        {
+            EdgeX& edge = *eiter;
+            assert( node._n == edge._i );
+            node._x += edge._x;
+            NodeX & cnode = _x[edge._j];
+            for(EdgeX::Iter ceiter = cnode._out_edge.begin(); ceiter != cnode._out_edge.end() ; ++ceiter )
+            {
+                EdgeX& cedge = *ceiter;
+                assert( cnode._n == cedge._i );
+                if( cedge._j == node._n )
+                {
+                    node._x -= cedge._x;
+                    break;
+                }
+            }
+        }
     }
 }
 
-void CostLess::computeStep()
+void CostLess::updateIX()
 {
-    ;
-}
-
-void CostLess::update()
-{
-    ;
+    for(NodeX::Iter niter=_x.begin();niter!=_x.end();++niter)
+    {
+        NodeX& node = *niter;
+        node._ix = std::round(node._x);
+        for(EdgeX::Iter eiter=niter->_out_edge.begin();eiter!=niter->_out_edge.end();++eiter)
+        {
+            EdgeX& edge = *eiter;
+            edge._ix = std::round(edge._x);
+        }
+    }
 }
 
 const char* CostLess::getRes()
