@@ -71,7 +71,8 @@ protected:
     uint32_t _obji_last;
     float _inf;
     float _step;
-
+    uint32_t allow_go_up_;
+    const static uint32_t _go_up_max = 1;
 private:
     //result text
     std::stringstream _res_txt;
