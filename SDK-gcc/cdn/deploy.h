@@ -75,11 +75,13 @@ protected:
     const static uint32_t _go_up_max = 1;
 private:
     //result text
-    std::stringstream _res_txt;
+    std::string _res_str;
+    std::stringstream  _res_txt;
     //server cost
     float _sp;
     //node vector
     std::vector<NodeX> _x;
+    float _sum_cx;
 };
 
 class Timer
