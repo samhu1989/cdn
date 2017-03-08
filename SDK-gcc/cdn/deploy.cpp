@@ -191,6 +191,7 @@ float CostLess::getObjFromX(void)
 
 void CostLess::computeD()
 {
+    printf("CostLess::computeD()\n");
     //server traffic gradient
     for(NodeX::Iter niter=_x.begin();niter!=_x.end();++niter)
     {
@@ -239,6 +240,7 @@ void CostLess::computeD()
 
 void CostLess::updateX()
 {
+    printf("CostLess::computeX()\n");
     //update edge traffic by gradient
     for(NodeX::Iter niter=_x.begin();niter!=_x.end();++niter)
     {
