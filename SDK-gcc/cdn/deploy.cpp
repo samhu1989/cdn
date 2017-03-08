@@ -20,10 +20,12 @@ CostLess::~CostLess()
 
 void CostLess::init(char* topo[MAX_EDGE_NUM],int line_num)
 {
+    printf("CostLess::init\n");
     std::stringstream head(topo[0]);
     uint32_t node_n,edge_n,c_n;
-    //net node number link number and consumer number
+    printf("CostLess::init: get node_n edge_n c_n\n");
     head >> node_n >> edge_n >> c_n;
+    printf("CostLess::init: node_n=%u edge_n=%u c_n=%u\n",node_n,edge_n,c_n);
     //reserve for nodes
     _x.reserve(node_n);
     //create nodes
@@ -31,22 +33,25 @@ void CostLess::init(char* topo[MAX_EDGE_NUM],int line_num)
     {
         _x.emplace_back(n_i,0.0f,0.0f,-1,0.0f);
     }
-    //server price
+    printf("CostLess::init: get server price\n");
     std::stringstream price(topo[2]);
-    price >> _sp;
-    //link info
+    uint32_t sp;
+    price >> sp;
+    _sp = sp;
+    printf("CostLess::init: _sp=%u\n",uint32_t(_sp));
+    printf("CostLess::init: get link information\n");
     for( uint32_t link_i = 0; link_i < edge_n ; ++link_i )
     {
-        std::stringstream link_txt( topo[4+2*link_i] );
+        std::stringstream link_txt( topo[4+link_i] );
         uint32_t s,e,max_band,cost;
         link_txt >> s >> e >> max_band >> cost;
         _x[s]._out_edge.emplace_back(s,e,0.0f,0.0f,float(max_band),float(cost));
         _x[e]._out_edge.emplace_back(e,s,0.0f,0.0f,float(max_band),float(cost));
     }
-    //consumer info
+    printf("CostLess::init: get client information\n");
     for( uint32_t c_i = 0; c_i < c_n; ++c_i)
     {
-        std::stringstream c_txt( topo[4+2*edge_n+2*c_i] );
+        std::stringstream c_txt( topo[4+edge_n+1+c_i] );
         uint32_t c_id,net_id,c_traffic;
         c_txt >> c_id >> net_id >> c_traffic;
         NodeX& node = _x[net_id];
@@ -55,6 +60,7 @@ void CostLess::init(char* topo[MAX_EDGE_NUM],int line_num)
         node._x = c_traffic; //init the node result by placing a server at the connected node
         node._ix = c_traffic;
     }
+    printf("CostLess::init: End\n");
 }
 
 uint32_t CostLess::less()
@@ -67,6 +73,7 @@ uint32_t CostLess::less()
         _objf_last = getObjFromX();
         return _obji_last;
     }
+    printf("CostLess::less:float obj=%f\n",_obji_last);
     if( isBetterIX() )
     {
         updateIX();
@@ -135,7 +142,13 @@ bool CostLess::isBetterIX()
 
 bool CostLess::isEnd()
 {
-     if( _lambda < ( 1.0 / ( 1.0 + _inf ) )  )return true;
+    bool flag = _lambda < ( 1.0 / ( 1.0 + _inf ) );
+    if( flag )
+    {
+        printf("CostLess::isEnd()=true,_lambda=%f\n",_lambda);
+        return true;
+    }
+    else return false;
 }
 
 float CostLess::getObjFromX(void)
@@ -145,10 +158,14 @@ float CostLess::getObjFromX(void)
     for(NodeX::Iter niter=_x.begin();niter!=_x.end();++niter)
     {
         NodeX& node = *niter;
-        if( node._x < 0.0 )
+        if( node._x <= -0.5 )
         {
             obj += node._x*(-_inf);
-        }else if( node._x <= 1.0 )
+        }else if( node._x < 0.5 )
+        {
+            obj += 2.0*(node._x*node._x)*_sp;
+        }
+        else if( node._x <= 1.0 )
         {
             obj += node._x*_sp;
         }else
@@ -178,10 +195,14 @@ void CostLess::computeD()
     for(NodeX::Iter niter=_x.begin();niter!=_x.end();++niter)
     {
         NodeX& node = *niter;
-        if( node._x < 0.0 )
+        if( node._x <= -0.5 )
         {
             node._dx = -_inf;
-        }else if( node._x <= 1.0 )
+        }else if( node._x < 0.5)
+        {
+            node._dx = _sp*node._x*4.0;
+        }
+        else if( node._x <= 1.0 )
         {
             node._dx = _sp;
         }else
@@ -281,6 +302,7 @@ void CostLess::updateIX()
 
 const char* CostLess::getRes()
 {
+    printf("CostLess::getRes()\n");
     std::stringstream stream;
     uint32_t cnt = 0;
     std::vector<NodeX>::const_iterator niter;
@@ -329,9 +351,10 @@ const char* CostLess::getRes()
                     stream << *piter <<" ";
                 }
                 stream << node._ci <<" ";
-                stream << min_traffic.back() <<"\n\n";
+                stream << min_traffic.back() <<"\n";
                 current_path.pop_back();
                 min_traffic.pop_back();
+                ++cnt;
             }else{
                 for(std::vector<EdgeX>::const_iterator eiter=node._out_edge.cbegin();eiter!=node._out_edge.cend();++eiter)
                 {
@@ -344,6 +367,9 @@ const char* CostLess::getRes()
             }
         }
     }
+    stream<<std::ends;
+    printf("CostLess::getRes():cnt=%u\n",cnt);
+    printf("CostLess::getRes():stream:\n%s\n",_res_txt.str().c_str());
     _res_txt.flush();
     _res_txt<<cnt<<"\n\n";
     _res_txt<<stream.str()<<std::ends;
