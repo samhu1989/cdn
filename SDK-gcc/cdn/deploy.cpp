@@ -7,15 +7,15 @@ std::time_t Timer::_time_start;
 CostLess::CostLess(char * topo[MAX_EDGE_NUM], int line_num):_sum_cx(0.0)
 {
     init(topo,line_num);
+    _alpha = 1.0 ;
     _lambda = 1.0 / ( _sum_cx * _sum_cx ) ;
     _inf = 1e4;
     _objf_last = getObjFromX();
     printf("CostLess::CostLess:Init Obj=%f\n",_objf_last);
-    allow_go_up_ = _go_up_max;
     _obji_last = 0;
     if(!isBetterIX())
     {
-        printf("Bad Init Integer");
+        printf("CostLess::CostLess:Bad Init Integer\n");
     }
     printf("CostLess::CostLess:Init Integer Obj=%u\n",_obji_last);
 }
@@ -79,15 +79,23 @@ uint32_t CostLess::less()
     updateX();
     if( isConverge() ) //is converged respecting to the continue problem
     {
-        _lambda *= 1.1;
-        printf("CostLess::less:lower lambda:%f\n",_lambda);
-        return _obji_last;
+        if( _lambda < 1.0 )
+        {
+            _lambda *= 1.1;
+            if( _lambda > 1.0 )
+            {
+                _lambda = 1.0 ;
+                _objf_last = getObjFromX();
+            }
+            printf("CostLess::less:larger lambda:%f\n",_lambda);
+        }
     }
     printf("CostLess::less:Float Obj=%f\n",_objf_last);
     _objf_last = getObjFromX();
     if( isBetterIX() )
     {
         updateIX();
+//        resetXtoIX();
     }
     printf("CostLess::less:Integer Obj=%u\n",_obji_last);
     return _obji_last;
@@ -96,16 +104,10 @@ uint32_t CostLess::less()
 bool CostLess::isConverge()
 {
     float obj = getObjFromX();
-    if(  obj > _objf_last )
+    if(  obj >= _objf_last )
     {
-        if( !allow_go_up_ )
-        {
-            allow_go_up_ = _go_up_max;
-            printf("Converged %f > %f \n",obj,_objf_last);
-            return true;
-        }else{
-            --allow_go_up_;
-        }
+        printf("Converged %f >= %f \n",obj,_objf_last);
+        return true;
     }
     return false;
 }
@@ -179,7 +181,7 @@ bool CostLess::isEnd()
     bool flag = _lambda >= 1.0;
     if( flag )
     {
-        printf("CostLess::isEnd()=true,_lambda=%f\n",_lambda);
+        printf("CostLess::isEnd()=true,_gamma=%f\n",_lambda);
         return true;
     }
     else return false;
@@ -191,8 +193,6 @@ float CostLess::getObjFromX(void)
     float node_obj = 0.0;
     float net_obj = 0.0;
     //server traffic gradient
-    float dx = std::sqrt( 1.0 / _lambda );
-    float dy = 1.0 - _lambda;
     for(NodeX::Iter niter=_x.begin();niter!=_x.end();++niter)
     {
         NodeX& node = *niter;
@@ -201,14 +201,13 @@ float CostLess::getObjFromX(void)
         {
             tmp_obj = ( node._x*node._x ) * _sp;
         }
-        else if( node._x <= dx )
+        else
         {
-            tmp_obj = ( node._x*node._x*_lambda ) * _sp;
-        }else
-        {
-            tmp_obj = ( dy / ( _sum_cx - 1.0 ) * ( node._x - _sum_cx ) + 1.0 )*_sp;
+            float f1 = ( node._x*node._x*_alpha );
+            float f2 = ( 2.0*std::atan( node._x ) / M_PI );
+            tmp_obj = _sp*( ( 1.0 - _lambda )*f1 + _lambda*f2 );
         }
-        printf("CostLess::getObjFromX():n(%u)=%f,dx=%f,dy=%f,obj=%f\n",node._n,node._x,dx,dy,tmp_obj);
+        printf("CostLess::getObjFromX():n(%u)=%f,obj=%f\n",node._n,node._x,tmp_obj);
         node_obj += tmp_obj;
         for(EdgeX::Iter eiter=niter->_out_edge.begin();eiter!=niter->_out_edge.end();++eiter)
         {
@@ -218,7 +217,7 @@ float CostLess::getObjFromX(void)
                 net_obj += edge._x*edge._x;
             }else if( edge._x > edge._x_max )
             {
-                net_obj += ( edge._x - edge._x_max )*_inf + edge._a*edge._x_max;
+                net_obj += ( ( edge._x - edge._x_max )*_inf + edge._a*edge._x_max );
             }else{
                 net_obj += edge._x*edge._a;
             }
@@ -232,8 +231,6 @@ void CostLess::computeD()
 {
     printf("CostLess::computeD()\n");
     //server traffic gradient
-    float dx = std::sqrt( 1.0 / _lambda );
-    float dy = 1.0 - _lambda;
     for(NodeX::Iter niter=_x.begin();niter!=_x.end();++niter)
     {
         NodeX& node = *niter;
@@ -241,12 +238,11 @@ void CostLess::computeD()
         {
             node._dx = _sp*node._x*2.0;
         }
-        else if( node._x <= dx )
+        else
         {
-            node._dx = _sp*_lambda*2.0*node._x;
-        }else
-        {
-            node._dx = _sp * dy / ( _sum_cx - 1.0 );
+            float d1 = _alpha*2.0*node._x;
+            float d2 = 2.0 / M_PI / ( 1.0 + node._x*node._x );
+            node._dx = _sp*( ( 1.0 - _lambda )*d1 + _lambda*d2 );
         }
         printf("n(%u):x=%f,dx=%f\n",node._n,node._x,node._dx);
     }
@@ -257,17 +253,17 @@ void CostLess::computeD()
     for(EdgeX::Iter eiter=niter->_out_edge.begin();eiter!=niter->_out_edge.end();++eiter)
     {
         EdgeX& edge = *eiter;
-        if( edge._x < 0.0 )
+        if( edge._x <= 0.0 )
         {
             edge._dx = 2.0*edge._x;
         }else if( edge._x > edge._x_max )
         {
             edge._dx = _inf;
         }else{
-            edge._dx  = edge._a;
-            edge._dx += niter->_dx;
-            edge._dx -= _x[edge._j]._dx;
+            edge._dx = edge._a;
         }
+        edge._dx += niter->_dx;
+        edge._dx -= _x[edge._j]._dx;
         printf("e(%u->%u):x=%f,dx=%f\n",edge._i,edge._j,edge._x,edge._dx);
         //for calculate step let the largest step be 1
         if( std::abs(edge._dx) > max_abs_dx )
@@ -280,7 +276,7 @@ void CostLess::computeD()
         }
     }
     //set step so that the largest update be 1
-    _step = 0.5 / max_abs_dx;
+    _step = 1.0 / max_abs_dx;
     printf("CostLess::computeD():step:%f,update range(%f,%f)\n",_step,_step*min_abs_dx,0.1);
 }
 
@@ -294,13 +290,20 @@ void CostLess::updateX()
         {
             EdgeX& edge = *eiter;
             edge._x -= _step*edge._dx;
-            if( edge._x < 0.0 )
+        }
+    }
+    printf("CostLess::updateX():set flow to one direction\n");
+    for(NodeX::Iter niter=_x.begin();niter!=_x.end();++niter)
+    {
+        for(EdgeX::Iter eiter=niter->_out_edge.begin();eiter!=niter->_out_edge.end();++eiter)
+        {
+            EdgeX& edge = *eiter;
+            EdgeX& cedge = *edge._dual_edge;
+            if( edge._x <= cedge._x )
             {
-                EdgeX& cedge = *edge._dual_edge;
                 cedge._x -= edge._x;
                 edge._x = 0.0;
             }
-            printf("e(%u->%u):x=%f\n",edge._i,edge._j,edge._x);
         }
     }
     //update server traffic by net traffic
@@ -311,6 +314,7 @@ void CostLess::updateX()
         for(EdgeX::Iter eiter=niter->_out_edge.begin();eiter!=niter->_out_edge.end();++eiter)
         {
             EdgeX& edge = *eiter;
+            printf("e(%u->%u):x=%f\n",edge._i,edge._j,edge._x);
             assert( node._n == edge._i );
             node._x += edge._x;
             EdgeX& cedge = *edge._dual_edge;
@@ -338,6 +342,21 @@ void CostLess::updateIX()
             printf("CostLess::updateIX():e(%u->%u)=%u\n",edge._i,edge._j,edge._ix);
         }
         printf("CostLess::updateIX():n(%u)=%u\n",node._n,node._ix);
+    }
+}
+
+void CostLess::resetXtoIX()
+{
+    printf("CostLess::resetXtoIX()\n");
+    for(NodeX::Iter niter=_x.begin();niter!=_x.end();++niter)
+    {
+        NodeX& node = *niter;
+        node._x = float(node._ix);
+        for(EdgeX::Iter eiter=niter->_out_edge.begin();eiter!=niter->_out_edge.end();++eiter)
+        {
+            EdgeX& edge = *eiter;
+            edge._x = float(edge._ix);
+        }
     }
 }
 
