@@ -54,6 +54,8 @@ void CostLess::init(char* topo[MAX_EDGE_NUM],int line_num)
         link_txt >> s >> e >> max_band >> cost;
         _x[s]._out_edge.emplace_back(s,e,0.0f,0.0f,float(max_band),float(cost));
         _x[e]._out_edge.emplace_back(e,s,0.0f,0.0f,float(max_band),float(cost));
+        _x[s]._out_edge.back()._dual_edge = & _x[e]._out_edge.back();
+        _x[e]._out_edge.back()._dual_edge = & _x[s]._out_edge.back();
     }
     printf("CostLess::init: get client information\n");
     for( uint32_t c_i = 0; c_i < c_n; ++c_i)
@@ -134,6 +136,7 @@ bool CostLess::isBetterIX()
                 return false;
             }else
             {
+                obj += eix*edge._a;
                 nix += eix;
             }
             NodeX & cnode = _x[edge._j];
@@ -284,7 +287,6 @@ void CostLess::computeD()
 void CostLess::updateX()
 {
     printf("CostLess::updateX()\n");
-    float min_net_traffic = _inf;
     //update edge traffic by gradient
     for(NodeX::Iter niter=_x.begin();niter!=_x.end();++niter)
     {
@@ -292,23 +294,13 @@ void CostLess::updateX()
         {
             EdgeX& edge = *eiter;
             edge._x -= _step*edge._dx;
+            if( edge._x < 0.0 )
+            {
+                EdgeX& cedge = *edge._dual_edge;
+                cedge._x -= edge._x;
+                edge._x = 0.0;
+            }
             printf("e(%u->%u):x=%f\n",edge._i,edge._j,edge._x);
-            if( min_net_traffic > edge._x )
-            {
-                min_net_traffic = edge._x;
-            }
-        }
-    }
-    if( min_net_traffic < 0.0 )
-    {
-        for(NodeX::Iter niter=_x.begin();niter!=_x.end();++niter)
-        {
-            for(EdgeX::Iter eiter=niter->_out_edge.begin();eiter!=niter->_out_edge.end();++eiter)
-            {
-                EdgeX& edge = *eiter;
-                edge._x -= min_net_traffic;
-                printf("e(%u->%u):x=%f\n",edge._i,edge._j,edge._x);
-            }
         }
     }
     //update server traffic by net traffic
@@ -321,17 +313,8 @@ void CostLess::updateX()
             EdgeX& edge = *eiter;
             assert( node._n == edge._i );
             node._x += edge._x;
-            NodeX & cnode = _x[edge._j];
-            for(EdgeX::Iter ceiter = cnode._out_edge.begin(); ceiter != cnode._out_edge.end() ; ++ceiter )
-            {
-                EdgeX& cedge = *ceiter;
-                assert( cnode._n == cedge._i );
-                if( cedge._j == node._n )
-                {
-                    node._x -= cedge._x;
-                    break;
-                }
-            }
+            EdgeX& cedge = *edge._dual_edge;
+            node._x -= cedge._x;
         }
         printf("n(%u):x=%f\n",node._n,node._x);
     }
@@ -339,7 +322,7 @@ void CostLess::updateX()
 
 void CostLess::updateIX()
 {
-    printf("CostLess::updateIX()");
+    printf("CostLess::updateIX()\n");
     for(NodeX::Iter niter=_x.begin();niter!=_x.end();++niter)
     {
         NodeX& node = *niter;
@@ -350,18 +333,11 @@ void CostLess::updateIX()
             edge._ix = std::round(edge._x);
             assert( node._n == edge._i );
             node._ix += edge._ix;
-            NodeX & cnode = _x[edge._j];
-            for(EdgeX::Iter ceiter = cnode._out_edge.begin(); ceiter != cnode._out_edge.end() ; ++ceiter )
-            {
-                EdgeX& cedge = *ceiter;
-                assert( cnode._n == cedge._i );
-                if( cedge._j == node._n )
-                {
-                    node._ix -= std::round(cedge._x);
-                    break;
-                }
-            }
+            EdgeX& cedge = *edge._dual_edge;
+            node._ix -= std::round(cedge._x);
+            printf("CostLess::updateIX():e(%u->%u)=%u\n",edge._i,edge._j,edge._ix);
         }
+        printf("CostLess::updateIX():n(%u)=%u\n",node._n,node._ix);
     }
 }
 
@@ -384,6 +360,7 @@ const char* CostLess::getRes()
         while(!node_to_visit.empty())
         {
             uint32_t node_visit = node_to_visit.top();
+            printf("CostLess::getRes():visiting n(%u)\n",node_visit);
             visited[node_visit] = true;
             node_to_visit.pop();
             const NodeX &node = _x[node_visit];
@@ -400,7 +377,7 @@ const char* CostLess::getRes()
                     {
                         if( edge._ix < min_traffic.back() )
                         {
-                            min_traffic.push_back(edge._ix);
+                            min_traffic.push_back( edge._ix );
                         }else{
                             min_traffic.push_back(min_traffic.back());
                         }
@@ -409,18 +386,28 @@ const char* CostLess::getRes()
                 current_path.push_back(node._n);
             }
             //arrived at a consumer
-            if( -1 != node._ci )
+            if( -1 != node._ci && min_traffic.back() > 0 )
             {
                 for(std::vector<uint32_t>::const_iterator piter=current_path.cbegin();piter!=current_path.cend();++piter)
                 {
                     stream << *piter <<" ";
                 }
                 stream << node._ci <<" ";
-                stream << min_traffic.back() <<"\n";
-                current_path.pop_back();
-                min_traffic.pop_back();
+                if( node._cx < min_traffic.back() )
+                {
+                    stream << node._cx <<"\n";
+                }else{
+                    stream << min_traffic.back() <<"\n";
+                }
+                if( current_path.size() > 1 )
+                {
+                    current_path.pop_back();
+                    min_traffic.pop_back();
+                }
                 ++cnt;
-            }else{
+            }
+            if( min_traffic.back() > 0 )
+            {
                 for(std::vector<EdgeX>::const_iterator eiter=node._out_edge.cbegin();eiter!=node._out_edge.cend();++eiter)
                 {
                     const EdgeX& edge = *eiter;

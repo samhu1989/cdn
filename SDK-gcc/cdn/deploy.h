@@ -31,6 +31,7 @@ protected:
         float _dx;//net traffic derivation
         float _x_max;//net traffic limit
         float _a; //net cost
+        EdgeX* _dual_edge;
     };
     class NodeX{
     public:
