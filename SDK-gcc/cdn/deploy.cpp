@@ -216,7 +216,7 @@ float CostLess::getObjFromX(void)
                 net_obj += edge._x*edge._x;
             }else if( edge._x > edge._x_max )
             {
-                net_obj += ( ( edge._x - edge._x_max )*_inf + edge._a*edge._x_max );
+                net_obj += edge._x*edge._x;
             }else{
                 net_obj += edge._x*edge._a;
             }
@@ -257,7 +257,7 @@ void CostLess::computeD()
             edge._dx = 2.0*edge._x;
         }else if( edge._x > edge._x_max )
         {
-            edge._dx = _inf;
+            edge._dx = 2.0*edge._x;
         }else{
             edge._dx = edge._a;
         }
