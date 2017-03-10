@@ -79,16 +79,15 @@ uint32_t CostLess::less()
     updateX();
     if( isConverge() ) //is converged respecting to the continue problem
     {
-        if( _lambda < 1.0 )
+        if( _lambda < 0.5 )
         {
-            _lambda *= 1.1;
-            if( _lambda > 1.0 )
-            {
-                _lambda = 1.0 ;
-                _objf_last = getObjFromX();
-            }
-            printf("CostLess::less:larger lambda:%f\n",_lambda);
+            _lambda = 1.0;
+        }else if(_lambda = 1.0 )
+        {
+            _lambda = 1.1;
         }
+        _objf_last = getObjFromX();
+        printf("CostLess::less:larger lambda:%f\n",_lambda);
     }
     printf("CostLess::less:Float Obj=%f\n",_objf_last);
     _objf_last = getObjFromX();
@@ -178,7 +177,7 @@ bool CostLess::isBetterIX()
 
 bool CostLess::isEnd()
 {
-    bool flag = _lambda >= 1.0;
+    bool flag = _lambda > 1.0;
     if( flag )
     {
         printf("CostLess::isEnd()=true,_gamma=%f\n",_lambda);
