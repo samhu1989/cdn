@@ -68,6 +68,7 @@ protected:
     //lambda
     float _lambda;
     float _alpha;//coeff for sqaure
+    float _beta;
     //last obj float
     float _objf_last;
     //last obj integer
@@ -104,7 +105,7 @@ private:
     //start time
     static std::time_t _time_start;
     //max time
-    static const std::time_t _time_max = 85;
+    static const std::time_t _time_max = 10;
 };
 
 void deploy_server(char * graph[MAX_EDGE_NUM], int edge_num, char * filename);

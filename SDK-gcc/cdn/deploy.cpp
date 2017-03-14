@@ -3,21 +3,27 @@
 #include <cassert>
 #include <cmath>
 #include <limits>
+#ifdef _DEBUG
+#define PRINT   printf
+#else
+#define PRINT(...)
+#endif
 std::time_t Timer::_time_start;
 CostLess::CostLess(char * topo[MAX_EDGE_NUM], int line_num):_sum_cx(0.0)
 {
     init(topo,line_num);
-    _alpha = 1.0 ;
-    _lambda = 1.0 / ( _sum_cx * _sum_cx ) ;
+    _alpha = 1.0;
+    _beta = 1.0 / (_sum_cx*_sum_cx);
+    _lambda = 1.0;
     _inf = 1e4;
     _objf_last = getObjFromX();
-    printf("CostLess::CostLess:Init Obj=%f\n",_objf_last);
+    PRINT("CostLess::CostLess:Init Obj=%f\n",_objf_last);
     _obji_last = 0;
     if(!isBetterIX())
     {
-        printf("CostLess::CostLess:Bad Init Integer\n");
+        PRINT("CostLess::CostLess:Bad Init Integer\n");
     }
-    printf("CostLess::CostLess:Init Integer Obj=%u\n",_obji_last);
+    PRINT("CostLess::CostLess:Init Integer Obj=%u\n",_obji_last);
 }
 
 CostLess::~CostLess()
@@ -27,12 +33,12 @@ CostLess::~CostLess()
 
 void CostLess::init(char* topo[MAX_EDGE_NUM],int line_num)
 {
-    printf("CostLess::init\n");
+    PRINT("CostLess::init\n");
     std::stringstream head(topo[0]);
     uint32_t node_n,edge_n,c_n;
-    printf("CostLess::init: get node_n edge_n c_n\n");
+    PRINT("CostLess::init: get node_n edge_n c_n\n");
     head >> node_n >> edge_n >> c_n;
-    printf("CostLess::init: node_n=%u edge_n=%u c_n=%u\n",node_n,edge_n,c_n);
+    PRINT("CostLess::init: node_n=%u edge_n=%u c_n=%u\n",node_n,edge_n,c_n);
     //reserve for nodes
     _x.reserve(node_n);
     //create nodes
@@ -40,13 +46,13 @@ void CostLess::init(char* topo[MAX_EDGE_NUM],int line_num)
     {
         _x.emplace_back(n_i,0.0f,0.0f,-1,0.0f);
     }
-    printf("CostLess::init: get server price\n");
+    PRINT("CostLess::init: get server price\n");
     std::stringstream price(topo[2]);
     uint32_t sp;
     price >> sp;
     _sp = sp;
-    printf("CostLess::init: _sp=%u\n",uint32_t(_sp));
-    printf("CostLess::init: get link information\n");
+    PRINT("CostLess::init: _sp=%u\n",uint32_t(_sp));
+    PRINT("CostLess::init: get link information\n");
     for( uint32_t link_i = 0; link_i < edge_n ; ++link_i )
     {
         std::stringstream link_txt( topo[4+link_i] );
@@ -57,7 +63,7 @@ void CostLess::init(char* topo[MAX_EDGE_NUM],int line_num)
         _x[s]._out_edge.back()._dual_edge = & _x[e]._out_edge.back();
         _x[e]._out_edge.back()._dual_edge = & _x[s]._out_edge.back();
     }
-    printf("CostLess::init: get client information\n");
+    PRINT("CostLess::init: get client information\n");
     for( uint32_t c_i = 0; c_i < c_n; ++c_i)
     {
         std::stringstream c_txt( topo[4+edge_n+1+c_i] );
@@ -70,7 +76,7 @@ void CostLess::init(char* topo[MAX_EDGE_NUM],int line_num)
         node._ix = c_traffic;
         _sum_cx += c_traffic;
     }
-    printf("CostLess::init: End\n");
+    PRINT("CostLess::init: End\n");
 }
 
 uint32_t CostLess::less()
@@ -79,33 +85,43 @@ uint32_t CostLess::less()
     updateX();
     if( isConverge() ) //is converged respecting to the continue problem
     {
-        if( _lambda < 0.5 )
-        {
-            _lambda = 1.0;
-        }else if(_lambda = 1.0 )
-        {
-            _lambda = 1.1;
-        }
-        _objf_last = getObjFromX();
-        printf("CostLess::less:larger lambda:%f\n",_lambda);
+        float th = std::sqrt( 1.0 / _beta );
+        th -= 1.0;
+        _beta = 1.0 / ( th* th );
+        PRINT("CostLess::less:larger lambda:%f\n",_lambda);
+        if(isEnd())return _obji_last;
+        else _objf_last = getObjFromX();
     }
-    printf("CostLess::less:Float Obj=%f\n",_objf_last);
+    PRINT("CostLess::less:Float Obj=%f\n",_objf_last);
     _objf_last = getObjFromX();
     if( isBetterIX() )
     {
         updateIX();
 //        resetXtoIX();
     }
-    printf("CostLess::less:Integer Obj=%u\n",_obji_last);
+    PRINT("CostLess::less:Integer Obj=%u\n",_obji_last);
     return _obji_last;
 }
+
+bool CostLess::isEnd()
+{
+    float th = std::sqrt( 1.0 / _beta );
+    bool flag = ( th < 1.0 );
+    if( flag )
+    {
+        PRINT("CostLess::isEnd()=true\n");
+        return true;
+    }
+    else return false;
+}
+
 
 bool CostLess::isConverge()
 {
     float obj = getObjFromX();
     if(  obj >= _objf_last )
     {
-        printf("Converged %f >= %f \n",obj,_objf_last);
+        PRINT("Converged %f >= %f \n",obj,_objf_last);
         return true;
     }
     return false;
@@ -113,7 +129,7 @@ bool CostLess::isConverge()
 
 bool CostLess::isBetterIX()
 {
-    printf("CostLess::isBetterIX()\n");
+    PRINT("CostLess::isBetterIX()\n");
     uint32_t obj = 0;
     //server traffic gradient
     for(NodeX::Iter niter=_x.begin();niter!=_x.end();++niter)
@@ -128,12 +144,12 @@ bool CostLess::isBetterIX()
             int32_t eix = std::round(edge._x);
             if( eix < 0 )
             {
-                printf("CostLess::isBetterIX():edge traffic lower zero\n");
+                PRINT("CostLess::isBetterIX():edge traffic lower zero\n");
                 return false;
             }else if ( eix > edge._x_max )
             {
-                printf("CostLess::isBetterIX():edge traffic above max\n");
-                printf("CostLess::isBetterIX():edge(%u->%u)=%u>%u\n",edge._i,edge._j,eix,uint32_t(edge._x_max));
+                PRINT("CostLess::isBetterIX():edge traffic above max\n");
+                PRINT("CostLess::isBetterIX():edge(%u->%u)=%u>%u\n",edge._i,edge._j,eix,uint32_t(edge._x_max));
                 return false;
             }else
             {
@@ -154,7 +170,7 @@ bool CostLess::isBetterIX()
         }
         if( nix < 0  )
         {
-            printf("CostLess::isBetterIX():node traffic lower zero\n");
+            PRINT("CostLess::isBetterIX():node traffic lower zero\n");
             return false;
         }else if( nix >= 1 )
         {
@@ -167,7 +183,7 @@ bool CostLess::isBetterIX()
         return true;
     }else if(  obj >= _obji_last )
     {
-        printf("CostLess::isBetterIX():same integer result\n");
+        PRINT("CostLess::isBetterIX():same integer result\n");
         return false;
     }else{
         _obji_last = obj;
@@ -175,23 +191,14 @@ bool CostLess::isBetterIX()
     }
 }
 
-bool CostLess::isEnd()
-{
-    bool flag = _lambda > 1.0;
-    if( flag )
-    {
-        printf("CostLess::isEnd()=true,_gamma=%f\n",_lambda);
-        return true;
-    }
-    else return false;
-}
 
 float CostLess::getObjFromX(void)
 {
-    printf("CostLess::getObjFromX()\n");
+    PRINT("CostLess::getObjFromX()\n");
     float node_obj = 0.0;
     float net_obj = 0.0;
     //server traffic gradient
+    float th = std::sqrt( 1.0 / _beta );
     for(NodeX::Iter niter=_x.begin();niter!=_x.end();++niter)
     {
         NodeX& node = *niter;
@@ -202,11 +209,9 @@ float CostLess::getObjFromX(void)
         }
         else
         {
-            float f1 = ( node._x*node._x*_alpha );
-            float f2 = ( 2.0*std::atan( node._x ) / M_PI );
-            tmp_obj = _sp*( ( 1.0 - _lambda )*f1 + _lambda*f2 );
+            tmp_obj = _sp*( node._x < th ? _beta*node._x*node._x : 1.0 ) ;
         }
-        printf("CostLess::getObjFromX():n(%u)=%f,obj=%f\n",node._n,node._x,tmp_obj);
+        PRINT("CostLess::getObjFromX():n(%u)=%f,obj=%f\n",node._n,node._x,tmp_obj);
         node_obj += tmp_obj;
         for(EdgeX::Iter eiter=niter->_out_edge.begin();eiter!=niter->_out_edge.end();++eiter)
         {
@@ -222,14 +227,15 @@ float CostLess::getObjFromX(void)
             }
         }
     }
-    printf("CostLess::getObjFromX():node_obj:%f,net_obj:%f\n",node_obj,net_obj);
+    PRINT("CostLess::getObjFromX():node_obj:%f,net_obj:%f\n",node_obj,net_obj);
     return node_obj + net_obj;
 }
 
 void CostLess::computeD()
 {
-    printf("CostLess::computeD()\n");
     //server traffic gradient
+    float th = std::sqrt( 1.0 / _beta );
+    PRINT("CostLess::computeD():th=%f\n",th);
     for(NodeX::Iter niter=_x.begin();niter!=_x.end();++niter)
     {
         NodeX& node = *niter;
@@ -239,15 +245,12 @@ void CostLess::computeD()
         }
         else
         {
-            float d1 = _alpha*2.0*node._x;
-            float d2 = 2.0 / M_PI / ( 1.0 + node._x*node._x );
-            node._dx = _sp*( ( 1.0 - _lambda )*d1 + _lambda*d2 );
+            node._dx = _sp*( node._x < th ? 2.0*_beta*node._x : 0.0 ) ;
         }
-        printf("n(%u):x=%f,dx=%f\n",node._n,node._x,node._dx);
+        PRINT("n(%u):x=%f,dx=%f\n",node._n,node._x,node._dx);
     }
     //net traffic gradient
     float max_abs_dx = 1.0;
-    float min_abs_dx = _inf;
     for(NodeX::Iter niter=_x.begin();niter!=_x.end();++niter)
     for(EdgeX::Iter eiter=niter->_out_edge.begin();eiter!=niter->_out_edge.end();++eiter)
     {
@@ -255,43 +258,57 @@ void CostLess::computeD()
         if( edge._x <= 0.0 )
         {
             edge._dx = 2.0*edge._x;
+        }else if( edge._x == edge._x_max )
+        {
+            edge._dx = 0.0;
         }else if( edge._x > edge._x_max )
         {
-            edge._dx = 2.0*edge._x;
+            edge._dx = _inf;
         }else{
             edge._dx = edge._a;
         }
         edge._dx += niter->_dx;
-        edge._dx -= _x[edge._j]._dx;
-        printf("e(%u->%u):x=%f,dx=%f\n",edge._i,edge._j,edge._x,edge._dx);
+        edge._dx -= _x[edge._j]._dx; 
+        PRINT("e(%u->%u):x=%f,dx=%f\n",edge._i,edge._j,edge._x,edge._dx);
         //for calculate step let the largest step be 1
-        if( std::abs(edge._dx) > max_abs_dx )
+        if( std::abs(edge._dx) > max_abs_dx && std::abs(edge._dx) < _inf  )
         {
             max_abs_dx = std::abs(edge._dx);
-        }
-        if( std::abs(edge._dx) > 0.0 && std::abs(edge._dx) < min_abs_dx )
-        {
-            min_abs_dx = std::abs(edge._dx);
         }
     }
     //set step so that the largest update be 1
     _step = 1.0 / max_abs_dx;
-    printf("CostLess::computeD():step:%f,update range(%f,%f)\n",_step,_step*min_abs_dx,0.1);
+    PRINT("CostLess::computeD():step :%f\n",_step);
+//    for(NodeX::Iter niter=_x.begin();niter!=_x.end();++niter)
+//    for(EdgeX::Iter eiter=niter->_out_edge.begin();eiter!=niter->_out_edge.end();++eiter)
+//    {
+//        EdgeX& edge = *eiter;
+//        if(edge._dx==0.0)continue;
+//        float mstep = std::abs( ( edge._x_max - edge._x ) / edge._dx );
+//        if(  mstep < _step )
+//        {
+//            _step = mstep;
+//            PRINT("CostLess::computeD():update step to:%f,edge._x_max=%f,edge._x=%f\n",_step,edge._x_max,edge._x);
+//        }
+//    }
+//    PRINT("CostLess::computeD():step :%f\n",_step);
 }
 
 void CostLess::updateX()
 {
-    printf("CostLess::updateX()\n");
+    PRINT("CostLess::updateX()\n");
     //update edge traffic by gradient
     for(NodeX::Iter niter=_x.begin();niter!=_x.end();++niter)
     {
         for(EdgeX::Iter eiter=niter->_out_edge.begin();eiter!=niter->_out_edge.end();++eiter)
         {
             EdgeX& edge = *eiter;
-            edge._x -= _step*edge._dx;
+            float value = edge._x - _step*edge._dx;
+            if( value > edge._x_max ) edge._x = edge._x_max;
+            else edge._x = value;
         }
     }
-    printf("CostLess::updateX():set flow to one direction\n");
+    PRINT("CostLess::updateX():set flow to one direction\n");
     for(NodeX::Iter niter=_x.begin();niter!=_x.end();++niter)
     {
         for(EdgeX::Iter eiter=niter->_out_edge.begin();eiter!=niter->_out_edge.end();++eiter)
@@ -303,6 +320,7 @@ void CostLess::updateX()
                 cedge._x -= edge._x;
                 edge._x = 0.0;
             }
+            if( cedge._x > cedge._x_max )cedge._x = cedge._x_max;
         }
     }
     //update server traffic by net traffic
@@ -313,19 +331,19 @@ void CostLess::updateX()
         for(EdgeX::Iter eiter=niter->_out_edge.begin();eiter!=niter->_out_edge.end();++eiter)
         {
             EdgeX& edge = *eiter;
-            printf("e(%u->%u):x=%f\n",edge._i,edge._j,edge._x);
+            PRINT("e(%u->%u):x=%f\n",edge._i,edge._j,edge._x);
             assert( node._n == edge._i );
             node._x += edge._x;
             EdgeX& cedge = *edge._dual_edge;
             node._x -= cedge._x;
         }
-        printf("n(%u):x=%f\n",node._n,node._x);
+        PRINT("n(%u):x=%f\n",node._n,node._x);
     }
 }
 
 void CostLess::updateIX()
 {
-    printf("CostLess::updateIX()\n");
+    PRINT("CostLess::updateIX()\n");
     for(NodeX::Iter niter=_x.begin();niter!=_x.end();++niter)
     {
         NodeX& node = *niter;
@@ -338,15 +356,15 @@ void CostLess::updateIX()
             node._ix += edge._ix;
             EdgeX& cedge = *edge._dual_edge;
             node._ix -= std::round(cedge._x);
-            printf("CostLess::updateIX():e(%u->%u)=%u\n",edge._i,edge._j,edge._ix);
+            PRINT("CostLess::updateIX():e(%u->%u)=%u\n",edge._i,edge._j,edge._ix);
         }
-        printf("CostLess::updateIX():n(%u)=%u\n",node._n,node._ix);
+        PRINT("CostLess::updateIX():n(%u)=%u\n",node._n,node._ix);
     }
 }
 
 void CostLess::resetXtoIX()
 {
-    printf("CostLess::resetXtoIX()\n");
+    PRINT("CostLess::resetXtoIX()\n");
     for(NodeX::Iter niter=_x.begin();niter!=_x.end();++niter)
     {
         NodeX& node = *niter;
@@ -361,7 +379,7 @@ void CostLess::resetXtoIX()
 
 const char* CostLess::getRes()
 {
-    printf("CostLess::getRes()\n");
+    PRINT("CostLess::getRes()\n");
     std::stringstream stream("");
     uint32_t cnt = 0;
     std::vector<NodeX>::const_iterator niter;
@@ -378,7 +396,7 @@ const char* CostLess::getRes()
         while(!node_to_visit.empty())
         {
             uint32_t node_visit = node_to_visit.top();
-            printf("CostLess::getRes():visiting n(%u)\n",node_visit);
+            PRINT("CostLess::getRes():visiting n(%u)\n",node_visit);
             visited[node_visit] = true;
             node_to_visit.pop();
             const NodeX &node = _x[node_visit];
@@ -440,7 +458,7 @@ const char* CostLess::getRes()
     _res_txt<<cnt<<"\n\n";
     _res_txt<<stream.str();
     _res_str = _res_txt.str();
-    printf("CostLess::getRes():\n%s\n",_res_str.c_str());
+    PRINT("CostLess::getRes():\n%s\n",_res_str.c_str());
     return _res_str.c_str();
 }
 
@@ -452,9 +470,9 @@ void deploy_server(char * topo[MAX_EDGE_NUM], int line_num,char * filename)
     while( !cost.isEnd() && !Timer::timeout() )
     {
         uint32_t c = cost.less();
-        printf("Cost:%u\n",c);
+        PRINT("Cost:%u\n",c);
     }
     const char* res = cost.getRes();
-    printf("deploy_server:\n%s\n",res);
+    PRINT("deploy_server:\n%s\n",res);
     write_result(res,filename);
 }
