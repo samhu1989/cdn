@@ -3,9 +3,45 @@
 #include "lib_io.h"
 #include <iostream>
 #include <ctime>
+#include <cmath>
 #include <sstream>
 #include <vector>
+#include <memory>
 #define M_PI        3.14159265358979323846
+class LP{
+public:
+    typedef std::vector<double> Vec;
+    typedef struct Table{
+        int _m;
+        int _n;
+        double* _Mat=nullptr;
+        double& operator()(int r,int c){
+            return _Mat[r*_n+c];
+        }
+        ~Table(){if(_Mat)delete[] _Mat;}
+    }Table;
+    static void simplex(Table& tab,Vec& res);
+    static void debug_simplex(void);
+protected:
+    static void simplex_print_table(Table&tab, const char* mes);
+    static void simplex_pivot_on(Table&tab, int row, int col);
+    static int  simplex_find_pivot_column(Table&tab);
+    static int  simplex_find_pivot_row(Table&tab, int pivot_col);
+    static void simplex_add_slack_variables(Table&tab);
+    static void simplex_check_b_positive(Table&tab);
+    static int  simplex_find_basis_variable(Table&tab, int col);
+    static void simplex_optimal_vector(Table&tab, std::vector<double>& x);
+    static void simplex_print_vector(const std::vector<double>& x,const char *message);
+};
+
+class IP{
+public:
+    static void branch_and_bound(LP::Table&);
+    static void debug_branch_and_bound(void);
+protected:
+
+};
+
 class CostLess
 {
 public:
@@ -57,24 +93,7 @@ protected:
         std::vector<EdgeX> _out_edge; //outgoing edges
     };
     void init(char* topo[MAX_EDGE_NUM],int line_num);
-    float getObjFromX(void);
-    void computeD();
-    void updateX();
-    void updateIX();
-    void resetXtoIX();
 protected:
-    bool isConverge();
-    bool isBetterIX();
-    //lambda
-    float _lambda;
-    float _alpha;//coeff for sqaure
-    float _beta;
-    //last obj float
-    float _objf_last;
-    //last obj integer
-    uint32_t _obji_last;
-    float _inf;
-    float _step;
 private:
     //result text
     std::string _res_str;
@@ -83,7 +102,7 @@ private:
     float _sp;
     //node vector
     std::vector<NodeX> _x;
-    float _sum_cx;
+    uint32_t _iter_cnt;
 };
 
 class Timer
