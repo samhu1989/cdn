@@ -6,14 +6,12 @@ DEFINES += _DEBUG
 SOURCES += \
     cdn.cpp \
     deploy.cpp \
-    io.cpp \
-    simplex.cpp
+    io.cpp
 
 DISTFILES +=
 
 HEADERS += \
-    deploy.h \
-    simplex.h
+    deploy.h
 
 DESTDIR = $$OUT_PWD/../bin
 INCLUDEPATH += $$PWD/lib
